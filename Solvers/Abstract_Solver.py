@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 import gymnasium as gym
 import time
+import numpy as np
 
 
 class AbstractSolver(ABC):
@@ -118,6 +119,60 @@ class AbstractSolver(ABC):
             ans += "," + str(self.statistics[s.value])
         return ans
 
+
+class MonitorAbstractSolver(AbstractSolver):
+    def __init__(self, env, eval_env, options):
+        super().__init__(env, eval_env, options)
+        
+    def step(self, state, action):
+        """
+        Take one step in the environment while keeping track of statistical information
+        Param:
+            action:
+        Return:
+            next_state: The next state
+            reward: Immediate reward
+            done: Is next_state terminal
+            info: Gym transition information
+        """
+        next_state, reward, terminated, truncated, info = self.env.step(self.convert_to_dict_action(action))
+
+        # _reward = reward["proxy"]
+        # if np.isnan(_reward):
+        #     _reward = self.actor_critic.q(state, action)
+        # _reward += reward["mon"]
+        _reward = reward['env']# + reward['mon']
+
+        # Update statistics
+        self.statistics[Statistics.Rewards.value] += _reward
+        self.statistics[Statistics.Steps.value] += 1
+        self.total_steps += 1
+
+        return next_state, reward, terminated or truncated, info
+    
+    def run_greedy(self):
+        """
+        Run the greedy policy.
+        """
+        policy = self.create_greedy_policy()
+        state, _ = self.eval_env.reset()
+        state = self.convert_from_dict_state(state)
+        if self.options.domain == "FlappyBird-v0":
+            self.eval_env.render()
+        rewards = 0
+        steps = 0
+        for _ in range(self.options.steps):
+            action = policy(state)
+            state, reward, done, _, _ = self.eval_env.step(self.convert_to_dict_action(action))
+            state = self.convert_from_dict_state(state)
+            if self.options.domain == "FlappyBird-v0":
+                self.eval_env.render()
+                time.sleep(1 / 30)
+            rewards += reward["proxy"]
+            steps += 1
+            if done:
+                break
+        return rewards, steps
 
 class Statistics(Enum):
     Episode = 0

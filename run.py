@@ -13,6 +13,8 @@ import os
 import random
 import numpy as np
 import torch
+from monitor_wrappers import FullMonitor, StatelessNoisyMonitor
+import gymnasium.wrappers
 
 gym.logger.set_level(40)
 
@@ -166,6 +168,14 @@ def build_parser():
         help="Size of batches to sample from the replay memory",
     )
     parser.add_option(
+        "-z",
+        "--monitor",
+        dest="monitor",
+        type="string",
+        default="none",
+        help="Enable Monitor",
+    )
+    parser.add_option(
         "--no-plots",
         help="Option to disable plots if the solver results any",
         dest="disable_plots",
@@ -181,20 +191,26 @@ def readCommand(argv):
     return options
 
 
-def getEnv(domain, render_mode=""):
+def getEnv(domain, mon, render_mode=""):
     if domain == "Blackjack":
-        return BlackjackEnv()
+        env = BlackjackEnv()
     elif domain == "Gridworld":
-        return GridworldEnv()
+        env = GridworldEnv()
     elif domain == "CliffWalking":
-        return CliffWalkingEnv()
+        env = CliffWalkingEnv()
     elif domain == "WindyGridworld":
-        return WindyGridworldEnv()
+        env = WindyGridworldEnv()
     else:
         try:
-            return gym.make(domain, render_mode=render_mode)
+            env = gym.make(domain, render_mode=render_mode)
         except:
             assert False, "Domain must be a valid (and installed) Gym environment"
+    if mon == "full":
+        env = FullMonitor(env)
+    if mon == "noise":
+        env = StatelessNoisyMonitor(env)
+
+    return env
 
 
 def parse_list(string):
@@ -238,12 +254,12 @@ def main(options):
             result_file.write(AbstractSolver.get_out_header())
 
     random.seed(options.seed)
-    env = getEnv(options.domain)
+    env = getEnv(options.domain, options.monitor)
     env._max_episode_steps = options.steps + 1  # suppress truncation
     # if options.domain == "FlappyBird-v0":
     #     eval_env = env
     # else:
-    eval_env = getEnv(options.domain, render_mode="human")
+    eval_env = getEnv(options.domain, options.monitor, render_mode="human")
     print(f"\n---------- {options.domain} ----------")
     print(f"Domain state space is {env.observation_space}")
     print(f"Domain action space is {env.action_space}")
